@@ -462,9 +462,7 @@ fn pr_checks(args: &[String], _verbose: u8, _ultra_compact: bool) -> Result<i32>
         "gh",
         &label,
         format_pr_checks,
-        RunOptions::stdout_only()
-            .early_exit_on_failure()
-            .no_trailing_newline(),
+        RunOptions::stdout_only().no_trailing_newline(),
     )
 }
 
@@ -507,12 +505,20 @@ fn format_pr_checks(stdout: &str) -> String {
         .filter(|check| check.2 == PrCheckStatus::Pending)
         .count();
 
+    let other = checks
+        .iter()
+        .filter(|check| check.2 == PrCheckStatus::Other)
+        .count();
+
     let mut out = String::new();
     out.push_str("CI Checks Summary:\n");
     out.push_str(&format!("  [ok] Passed: {}\n", passed));
     out.push_str(&format!("  [FAIL] Failed: {}\n", failed));
     if pending > 0 {
         out.push_str(&format!("  [pending] Pending: {}\n", pending));
+    }
+    if other > 0 {
+        out.push_str(&format!("  [skip] Skipped/cancelled: {}\n", other));
     }
     let failed_checks = checks
         .iter()
@@ -532,6 +538,7 @@ enum PrCheckStatus {
     Passed,
     Failed,
     Pending,
+    Other,
 }
 
 fn parse_pr_check_line(line: &str) -> Option<(&str, &str, PrCheckStatus)> {
@@ -541,7 +548,10 @@ fn parse_pr_check_line(line: &str) -> Option<(&str, &str, PrCheckStatus)> {
         "pass" => PrCheckStatus::Passed,
         "fail" => PrCheckStatus::Failed,
         "pending" | "*" => PrCheckStatus::Pending,
-        _ => return None,
+        // skipping, cancelled, and whatever a later gh adds. Counted rather than
+        // dropped, so the totals add up to the checks gh listed and a cancelled
+        // run cannot read as "nothing wrong".
+        _ => PrCheckStatus::Other,
     };
     let link = fields.nth(1).unwrap_or("").trim();
 
